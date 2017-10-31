@@ -6,9 +6,10 @@ use getopts::Options;
 use std::collections::HashMap;
 use std::env;
 use std::net::UdpSocket;
+use std::net::SocketAddr;
 use std::sync::mpsc::channel;
 
-use socks5udp::reply_to_client;
+use socks5udp::channel_to_socket;
 use socks5udp::Forwarder;
 
 static mut DEBUG: bool = false;
@@ -82,12 +83,13 @@ fn forward(bind_addr: &str, local_port: i32, remote_host: &str, remote_port: i32
 
     let remote_addr = format!("{}:{}", remote_host, remote_port);
 
-    let responder = local
+    let socket = local
         .try_clone()
         .expect(&format!("Failed to clone primary listening address socket {}",
-                        local.local_addr().unwrap()));
-    let (main_sender, main_receiver) = channel::<(_, Vec<u8>)>();
-    reply_to_client(main_receiver, responder);
+                         local.local_addr().unwrap()));
+    let (downstream_sender,
+        downstream_receiver) = channel::<(SocketAddr, Vec<u8>)>();
+    channel_to_socket(downstream_receiver, socket);
 
     let mut client_map = HashMap::new();
     let mut buf = [0; 64 * 1024];
@@ -114,7 +116,7 @@ fn forward(bind_addr: &str, local_port: i32, remote_host: &str, remote_port: i32
                     //we are creating a new listener now, so a failure to send shoud be treated as an error
                     ignore_failure = false;
                     Forwarder::new(
-                        main_sender.clone(),
+                        downstream_sender.clone(),
                         remote_addr.clone(),
                         src_addr,
                     )

@@ -14,12 +14,12 @@ use std::time::Duration;
 
 const TIMEOUT: u64 = 30;
 
-pub fn reply_to_client(main_receiver: Receiver<(SocketAddr, Vec<u8>)>, responder: UdpSocket) {
+pub fn channel_to_socket(receiver: Receiver<(SocketAddr, Vec<u8>)>, socket: UdpSocket) {
     thread::spawn(move || {
         loop {
-            let (dest, buf) = main_receiver.recv().unwrap();
+            let (dest, buf) = receiver.recv().unwrap();
             let to_send = buf.as_slice();
-            responder
+            socket
                 .send_to(to_send, dest)
                 .expect(&format!("Failed to forward response from upstream server to client {}",
                                  dest));
@@ -131,3 +131,6 @@ impl Forwarder {
     }
 }
 
+pub struct Clients {
+
+}
