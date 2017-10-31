@@ -123,7 +123,7 @@ fn forward(bind_addr: &str, local_port: i32, remote_host: &str, remote_port: i32
                 });
 
             let to_send = buf[..num_bytes].to_vec();
-            match sender.send(to_send) {
+            match sender.send_upstream(to_send) {
                 Ok(_) => {
                     break;
                 }

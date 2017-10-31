@@ -80,10 +80,7 @@ fn client_to_upstream(
 }
 
 pub struct Forwarder {
-    send_queue: Sender<(SocketAddr, Vec<u8>)>,
-    remote_addr: String,
-    src_addr: SocketAddr,
-    sender: Sender<Vec<u8>>,
+    upstream_sender: Sender<Vec<u8>>,
 }
 
 impl Forwarder {
@@ -119,18 +116,11 @@ impl Forwarder {
 
         });
         Forwarder {
-            send_queue: local_send_queue,
-            remote_addr: remote_addr_copy,
-            src_addr: src_addr,
-            sender: sender
+            upstream_sender: sender
         }
     }
 
-    pub fn send(&self, data: Vec<u8>)-> Result<(), mpsc::SendError<Vec<u8>>> {
-        self.sender.send(data)
+    pub fn send_upstream(&self, data: Vec<u8>) -> Result<(), mpsc::SendError<Vec<u8>>> {
+        self.upstream_sender.send(data)
     }
-}
-
-pub struct Clients {
-
 }
