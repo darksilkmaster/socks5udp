@@ -10,8 +10,6 @@ use std::net::UdpSocket;
 use std::net::SocketAddr;
 use std::sync::mpsc::channel;
 
-use socks::Socks5Datagram;
-
 use socks5udp::channel_to_socket;
 use socks5udp::Forwarder;
 

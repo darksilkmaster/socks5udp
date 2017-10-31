@@ -66,7 +66,7 @@ fn client_to_upstream(
 ) {
     let remote_addr: &str = &remote_addr;
     loop {
-        match receiver.recv_timeout(Duration::from_millis(TIMEOUT)) {
+        match receiver.recv_timeout(Duration::from_secs(TIMEOUT)) {
             Ok(from_client) => {
                 upstream_send.send_to(from_client.as_slice(), remote_addr)
                     .expect(&format!("Failed to forward packet from client {} to upstream server!", src_addr));
@@ -97,21 +97,14 @@ impl Forwarder {
         let send_q = local_send_queue.clone();
         let remote_addr = remote_addr.clone();
         let sockaddrcopy0 = socks_addr.to_string();
-        let sockaddrcopy1 = socks_addr.to_string();
         let (sender, receiver) = channel::<Vec<u8>>();
         thread::spawn(move|| {
             //regardless of which port we are listening to, we don't know which interface or IP
             //address the remote server is reachable via, so we bind the outgoing
             //connection to 0.0.0.0 in all cases.
-            println!("creating");
             let temp_addr = format!("0.0.0.0:{}", 1024 + rand::random::<u16>());
-            println!("addr {}", temp_addr);
             let socks5recv = Socks5Datagram::bind(sockaddrcopy0, temp_addr).expect("can't create socks 5 datagram endpoint");
-            println!("431");
-            let temp_addr1 = format!("0.0.0.0:{}", 1024 + rand::random::<u16>());
-            println!("addr {}", temp_addr1);
-            let socks5send = Socks5Datagram::bind(sockaddrcopy1, temp_addr1).expect("can't create socks 5 datagram endpoint");
-            println!("created");
+            let socks5send = socks5recv.try_clone().unwrap();
 
             let mut timeouts : u64 = 0;
             let timed_out = Arc::new(AtomicBool::new(false));
