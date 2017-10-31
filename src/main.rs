@@ -1,5 +1,4 @@
 extern crate getopts;
-extern crate rand;
 extern crate socks;
 extern crate socks5udp;
 

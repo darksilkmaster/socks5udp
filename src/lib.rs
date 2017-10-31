@@ -1,4 +1,3 @@
-extern crate rand;
 extern crate socks;
 
 use std::net::UdpSocket;
@@ -102,8 +101,7 @@ impl Forwarder {
             //regardless of which port we are listening to, we don't know which interface or IP
             //address the remote server is reachable via, so we bind the outgoing
             //connection to 0.0.0.0 in all cases.
-            let temp_addr = format!("0.0.0.0:{}",
-                                    1024 + rand::random::<u16>());
+            let temp_addr = format!("0.0.0.0:{}", 0);
             let socks5recv = Socks5Datagram::bind(sockaddrcopy0, temp_addr).expect("can't create socks 5 datagram endpoint");
             let socks5send = socks5recv.try_clone().unwrap();
 
