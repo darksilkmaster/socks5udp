@@ -1,9 +1,12 @@
+extern crate rand;
+
 use std::net::UdpSocket;
 use std::net::SocketAddr;
 use std::sync::mpsc::Receiver;
 use std::sync::mpsc::Sender;
 use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::mpsc::channel;
 use std::thread;
 
 use std::time::Duration;
@@ -23,7 +26,7 @@ pub fn reply_to_client(main_receiver: Receiver<(SocketAddr, Vec<u8>)>, responder
     });
 }
 
-pub fn upstream_to_local(
+fn upstream_to_local(
     upstream_recv: UdpSocket,
     local_send_queue: Sender<(SocketAddr, Vec<u8>)>,
     src_addr: SocketAddr,
@@ -49,7 +52,7 @@ pub fn upstream_to_local(
     });
 }
 
-pub fn client_to_upstream(
+fn client_to_upstream(
     receiver: Receiver<Vec<u8>>,
     upstream_send: UdpSocket,
     timeouts: &mut u64,
@@ -73,4 +76,36 @@ pub fn client_to_upstream(
             }
         };
     }
+}
+
+pub fn create_sender(
+    local_send_queue: Sender<(SocketAddr, Vec<u8>)>,
+    remote_addr_copy: String,
+    src_addr: SocketAddr,
+)-> Sender<Vec<u8>> {
+    let (sender, receiver) = channel::<Vec<u8>>();
+    thread::spawn(move|| {
+        //regardless of which port we are listening to, we don't know which interface or IP
+        //address the remote server is reachable via, so we bind the outgoing
+        //connection to 0.0.0.0 in all cases.
+        let temp_outgoing_addr = format!("0.0.0.0:{}", 1024 + rand::random::<u16>());
+        let upstream_send = UdpSocket::bind(&temp_outgoing_addr)
+            .expect(&format!("Failed to bind to transient address {}", &temp_outgoing_addr));
+        let upstream_recv = upstream_send.try_clone()
+            .expect("Failed to clone client-specific connection to upstream!");
+
+        let mut timeouts : u64 = 0;
+        let timed_out = Arc::new(AtomicBool::new(false));
+
+        let local_timed_out = timed_out.clone();
+        upstream_to_local(upstream_recv,
+                          local_send_queue,
+                          src_addr,
+                          local_timed_out,
+        );
+
+        client_to_upstream(receiver, upstream_send, & mut timeouts, remote_addr_copy, src_addr, timed_out);
+
+    });
+    sender
 }

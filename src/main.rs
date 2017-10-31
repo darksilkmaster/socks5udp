@@ -6,14 +6,10 @@ use getopts::Options;
 use std::collections::HashMap;
 use std::env;
 use std::net::UdpSocket;
-use std::sync::Arc;
-use std::sync::atomic::{AtomicBool};
 use std::sync::mpsc::channel;
-use std::thread;
 
 use socks5udp::reply_to_client;
-use socks5udp::upstream_to_local;
-use socks5udp::client_to_upstream;
+use socks5udp::create_sender;
 
 static mut DEBUG: bool = false;
 
@@ -111,39 +107,16 @@ fn forward(bind_addr: &str, local_port: i32, remote_host: &str, remote_port: i32
                 client_map.remove(&client_id);
             }
 
-            let sender = client_map.entry(client_id.clone()).or_insert_with(|| {
-                //we are creating a new listener now, so a failure to send shoud be treated as an error
-                ignore_failure = false;
-
-                let local_send_queue = main_sender.clone();
-                let (sender, receiver) = channel::<Vec<u8>>();
-                let remote_addr_copy = remote_addr.clone();
-                thread::spawn(move|| {
-                    //regardless of which port we are listening to, we don't know which interface or IP
-                    //address the remote server is reachable via, so we bind the outgoing
-                    //connection to 0.0.0.0 in all cases.
-                    let temp_outgoing_addr = format!("0.0.0.0:{}", 1024 + rand::random::<u16>());
-                    debug(format!("Establishing new forwarder for client {} on {}", src_addr, &temp_outgoing_addr));
-                    let upstream_send = UdpSocket::bind(&temp_outgoing_addr)
-                        .expect(&format!("Failed to bind to transient address {}", &temp_outgoing_addr));
-                    let upstream_recv = upstream_send.try_clone()
-                        .expect("Failed to clone client-specific connection to upstream!");
-
-                    let mut timeouts : u64 = 0;
-                    let timed_out = Arc::new(AtomicBool::new(false));
-
-                    let local_timed_out = timed_out.clone();
-                    upstream_to_local(upstream_recv,
-                                      local_send_queue,
-                                      src_addr,
-                                      local_timed_out,
-                    );
-
-                    client_to_upstream(receiver, upstream_send, & mut timeouts, remote_addr_copy, src_addr, timed_out);
-
+            let sender = client_map.entry(client_id.clone())
+                .or_insert_with(|| {
+                    //we are creating a new listener now, so a failure to send shoud be treated as an error
+                    ignore_failure = false;
+                    create_sender(
+                        main_sender.clone(),
+                        remote_addr.clone(),
+                        src_addr,
+                    )
                 });
-                sender
-            });
 
             let to_send = buf[..num_bytes].to_vec();
             match sender.send(to_send) {
