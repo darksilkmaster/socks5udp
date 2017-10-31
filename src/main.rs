@@ -13,6 +13,7 @@ use std::thread;
 use std::time::Duration;
 
 use udpproxy::reply_to_client;
+use udpproxy::upstream_to_local;
 
 const TIMEOUT: u64 = 3 * 60 * 100; //3 minutes
 static mut DEBUG: bool = false;
@@ -133,25 +134,11 @@ fn forward(bind_addr: &str, local_port: i32, remote_host: &str, remote_port: i32
                     let timed_out = Arc::new(AtomicBool::new(false));
 
                     let local_timed_out = timed_out.clone();
-                    thread::spawn(move|| {
-                        let mut from_upstream = [0; 64 * 1024];
-                        upstream_recv.set_read_timeout(Some(Duration::from_millis(TIMEOUT + 100))).unwrap();
-                        loop {
-                            match upstream_recv.recv_from(&mut from_upstream) {
-                                Ok((bytes_rcvd, _)) => {
-                                    let to_send = from_upstream[..bytes_rcvd].to_vec();
-                                    local_send_queue.send((src_addr, to_send))
-                                        .expect("Failed to queue response from upstream server for forwarding!");
-                                },
-                                Err(_) => {
-                                    if local_timed_out.load(Ordering::Relaxed) {
-                                        debug(format!("Terminating forwarder thread for client {} due to timeout", src_addr));
-                                        break;
-                                    }
-                                }
-                            };
-                        }
-                    });
+                    upstream_to_local(upstream_recv,
+                                      local_send_queue,
+                                      src_addr,
+                                      local_timed_out,
+                    );
 
                     loop {
                         match receiver.recv_timeout(Duration::from_millis(TIMEOUT)) {
