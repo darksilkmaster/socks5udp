@@ -11,4 +11,4 @@ license = "MIT"
 [dependencies]
 getopts = "0.2"
 rand = "0.3"
-socks = "0.3.*"
+socks = {path = "./rust-socks"}
