@@ -38,7 +38,7 @@ fn upstream_to_local(
 {
     thread::spawn(move|| {
         let mut from_upstream = [0; 64 * 1024];
-        upstream_recv.get_ref().set_read_timeout(Some(Duration::from_millis(TIMEOUT + 100))).unwrap();
+        upstream_recv.get_ref().set_read_timeout(Some(Duration::from_secs(TIMEOUT))).unwrap();
         loop {
             match upstream_recv.recv_from(&mut from_upstream) {
                 Ok((bytes_rcvd, _)) => {
@@ -74,7 +74,7 @@ fn client_to_upstream(
             },
             Err(_) => {
                 *timeouts += 1;
-                if *timeouts >= 10 {
+                if *timeouts >= 2 {
                     timed_out.store(true, Ordering::Relaxed);
                     break;
                 }
@@ -102,7 +102,8 @@ impl Forwarder {
             //regardless of which port we are listening to, we don't know which interface or IP
             //address the remote server is reachable via, so we bind the outgoing
             //connection to 0.0.0.0 in all cases.
-            let temp_addr = format!("0.0.0.0:{}", 1024 + rand::random::<u16>());
+            let temp_addr = format!("0.0.0.0:{}",
+                                    1024 + rand::random::<u16>());
             let socks5recv = Socks5Datagram::bind(sockaddrcopy0, temp_addr).expect("can't create socks 5 datagram endpoint");
             let socks5send = socks5recv.try_clone().unwrap();
 
