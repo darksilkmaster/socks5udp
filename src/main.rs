@@ -1,5 +1,6 @@
 extern crate getopts;
 extern crate rand;
+extern crate udpproxy;
 
 use getopts::Options;
 use std::collections::HashMap;
@@ -10,6 +11,8 @@ use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::mpsc::channel;
 use std::thread;
 use std::time::Duration;
+
+use udpproxy::local_to_remote;
 
 const TIMEOUT: u64 = 3 * 60 * 100; //3 minutes
 static mut DEBUG: bool = false;
@@ -88,17 +91,7 @@ fn forward(bind_addr: &str, local_port: i32, remote_host: &str, remote_port: i32
         .expect(&format!("Failed to clone primary listening address socket {}",
                         local.local_addr().unwrap()));
     let (main_sender, main_receiver) = channel::<(_, Vec<u8>)>();
-    thread::spawn(move || {
-        debug(format!("Started new thread to deal out responses to clients"));
-        loop {
-            let (dest, buf) = main_receiver.recv().unwrap();
-            let to_send = buf.as_slice();
-            responder
-                .send_to(to_send, dest)
-                .expect(&format!("Failed to forward response from upstream server to client {}",
-                                dest));
-        }
-    });
+    local_to_remote(main_receiver, responder);
 
     let mut client_map = HashMap::new();
     let mut buf = [0; 64 * 1024];
