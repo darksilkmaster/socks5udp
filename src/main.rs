@@ -1,5 +1,6 @@
 extern crate getopts;
 extern crate rand;
+extern crate socks;
 extern crate socks5udp;
 
 use getopts::Options;
@@ -8,6 +9,8 @@ use std::env;
 use std::net::UdpSocket;
 use std::net::SocketAddr;
 use std::sync::mpsc::channel;
+
+use socks::Socks5Datagram;
 
 use socks5udp::channel_to_socket;
 use socks5udp::Forwarder;
@@ -43,6 +46,10 @@ fn main() {
                 "bind",
                 "The address on which to listen for incoming requests",
                 "BIND_ADDR");
+    opts.optopt("",
+                "socks-proxy",
+                "The udp port on which the socks5 server listens",
+                "");
     opts.optflag("d", "debug", "Enable debug mode");
 
     let matches = opts.parse(&args[1..])
@@ -61,8 +68,9 @@ fn main() {
         Some(addr) => addr,
         None => "127.0.0.1".to_owned(),
     };
+    let socks5_host = matches.opt_str("socks-proxy").unwrap();
 
-    forward(&bind_addr, local_port, &remote_host, remote_port);
+    forward(&bind_addr, local_port, &remote_host, remote_port, &socks5_host);
 }
 
 fn debug(msg: String) {
@@ -76,7 +84,7 @@ fn debug(msg: String) {
     }
 }
 
-fn forward(bind_addr: &str, local_port: i32, remote_host: &str, remote_port: i32) {
+fn forward(bind_addr: &str, local_port: i32, remote_host: &str, remote_port: i32, socks_addr: &str) {
     let local_addr = format!("{}:{}", bind_addr, local_port);
     let local = UdpSocket::bind(&local_addr).expect(&format!("Unable to bind to {}", &local_addr));
     println!("Listening on {}", local.local_addr().unwrap());
@@ -119,6 +127,7 @@ fn forward(bind_addr: &str, local_port: i32, remote_host: &str, remote_port: i32
                         downstream_sender.clone(),
                         remote_addr.clone(),
                         src_addr,
+                        socks_addr,
                     )
                 });
 

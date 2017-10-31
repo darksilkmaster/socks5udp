@@ -1,4 +1,5 @@
 extern crate rand;
+extern crate socks;
 
 use std::net::UdpSocket;
 use std::net::SocketAddr;
@@ -11,6 +12,8 @@ use std::sync::mpsc;
 use std::thread;
 
 use std::time::Duration;
+
+use socks::Socks5Datagram;
 
 const TIMEOUT: u64 = 30;
 
@@ -28,14 +31,14 @@ pub fn channel_to_socket(receiver: Receiver<(SocketAddr, Vec<u8>)>, socket: UdpS
 }
 
 fn upstream_to_local(
-    upstream_recv: UdpSocket,
+    upstream_recv: Socks5Datagram,
     local_send_queue: Sender<(SocketAddr, Vec<u8>)>,
     src_addr: SocketAddr,
     local_timed_out: Arc<AtomicBool>)
 {
     thread::spawn(move|| {
         let mut from_upstream = [0; 64 * 1024];
-        upstream_recv.set_read_timeout(Some(Duration::from_millis(TIMEOUT + 100))).unwrap();
+        upstream_recv.get_ref().set_read_timeout(Some(Duration::from_millis(TIMEOUT + 100))).unwrap();
         loop {
             match upstream_recv.recv_from(&mut from_upstream) {
                 Ok((bytes_rcvd, _)) => {
@@ -55,16 +58,17 @@ fn upstream_to_local(
 
 fn client_to_upstream(
     receiver: Receiver<Vec<u8>>,
-    upstream_send: UdpSocket,
+    upstream_send: Socks5Datagram,
     timeouts: &mut u64,
-    remote_addr_copy: String,
+    remote_addr: String,
     src_addr: SocketAddr,
     timed_out: Arc<AtomicBool>,
 ) {
+    let remote_addr: &str = &remote_addr;
     loop {
         match receiver.recv_timeout(Duration::from_millis(TIMEOUT)) {
             Ok(from_client) => {
-                upstream_send.send_to(from_client.as_slice(), &remote_addr_copy)
+                upstream_send.send_to(from_client.as_slice(), remote_addr)
                     .expect(&format!("Failed to forward packet from client {} to upstream server!", src_addr));
                 *timeouts = 0; //reset timeout count
             },
@@ -86,33 +90,45 @@ pub struct Forwarder {
 impl Forwarder {
     pub fn new(
         local_send_queue: Sender<(SocketAddr, Vec<u8>)>,
-        remote_addr_copy: String,
+        remote_addr: String,
         src_addr: SocketAddr,
+        socks_addr: &str,
     ) -> Forwarder {
         let send_q = local_send_queue.clone();
-        let remote_a = remote_addr_copy.clone();
+        let remote_addr = remote_addr.clone();
+        let sockaddrcopy0 = socks_addr.to_string();
+        let sockaddrcopy1 = socks_addr.to_string();
         let (sender, receiver) = channel::<Vec<u8>>();
         thread::spawn(move|| {
             //regardless of which port we are listening to, we don't know which interface or IP
             //address the remote server is reachable via, so we bind the outgoing
             //connection to 0.0.0.0 in all cases.
-            let temp_outgoing_addr = format!("0.0.0.0:{}", 1024 + rand::random::<u16>());
-            let upstream_send = UdpSocket::bind(&temp_outgoing_addr)
-                .expect(&format!("Failed to bind to transient address {}", &temp_outgoing_addr));
-            let upstream_recv = upstream_send.try_clone()
-                .expect("Failed to clone client-specific connection to upstream!");
+            println!("creating");
+            let temp_addr = format!("0.0.0.0:{}", 1024 + rand::random::<u16>());
+            println!("addr {}", temp_addr);
+            let socks5recv = Socks5Datagram::bind(sockaddrcopy0, temp_addr).expect("can't create socks 5 datagram endpoint");
+            println!("431");
+            let temp_addr1 = format!("0.0.0.0:{}", 1024 + rand::random::<u16>());
+            println!("addr {}", temp_addr1);
+            let socks5send = Socks5Datagram::bind(sockaddrcopy1, temp_addr1).expect("can't create socks 5 datagram endpoint");
+            println!("created");
 
             let mut timeouts : u64 = 0;
             let timed_out = Arc::new(AtomicBool::new(false));
 
             let local_timed_out = timed_out.clone();
-            upstream_to_local(upstream_recv,
+            upstream_to_local(socks5recv,
                               send_q,
                               src_addr,
                               local_timed_out,
             );
 
-            client_to_upstream(receiver, upstream_send, & mut timeouts, remote_a, src_addr, timed_out);
+            client_to_upstream(
+                receiver,
+                socks5send,
+                & mut timeouts,
+                remote_addr,
+                src_addr, timed_out);
 
         });
         Forwarder {
