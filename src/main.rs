@@ -12,7 +12,7 @@ use std::sync::mpsc::channel;
 use std::thread;
 use std::time::Duration;
 
-use udpproxy::local_to_remote;
+use udpproxy::reply_to_client;
 
 const TIMEOUT: u64 = 3 * 60 * 100; //3 minutes
 static mut DEBUG: bool = false;
@@ -91,7 +91,7 @@ fn forward(bind_addr: &str, local_port: i32, remote_host: &str, remote_port: i32
         .expect(&format!("Failed to clone primary listening address socket {}",
                         local.local_addr().unwrap()));
     let (main_sender, main_receiver) = channel::<(_, Vec<u8>)>();
-    local_to_remote(main_receiver, responder);
+    reply_to_client(main_receiver, responder);
 
     let mut client_map = HashMap::new();
     let mut buf = [0; 64 * 1024];

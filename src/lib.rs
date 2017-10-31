@@ -3,7 +3,7 @@ use std::net::SocketAddr;
 use std::sync::mpsc::Receiver;
 use std::thread;
 
-pub fn local_to_remote(main_receiver: Receiver<(SocketAddr, Vec<u8>)>, responder: UdpSocket) {
+pub fn reply_to_client(main_receiver: Receiver<(SocketAddr, Vec<u8>)>, responder: UdpSocket) {
     thread::spawn(move || {
         loop {
             let (dest, buf) = main_receiver.recv().unwrap();
