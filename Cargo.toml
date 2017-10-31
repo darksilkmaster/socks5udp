@@ -1,10 +1,8 @@
 [package]
-name = "udpproxy"
+name = "socks5udp"
 version = "0.1.0"
-authors = ["Mahmoud Al-Qudsi <mqudsi@neosmart.net>"]
-description = "Cross-platform multi-client UDP proxy"
-homepage = "https://github.com/neosmart/udpproxy"
-repository = "https://github.com/neosmart/udpproxy"
+authors = ["Dark Silk"]
+description = "UDP proxy to socks5 proxy"
 readme = "README.md"
 keywords = ["proxy", "udp", "networking"]
 categories = ["command-line-utilities", "network-programming"]
