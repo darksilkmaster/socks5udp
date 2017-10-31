@@ -7,6 +7,7 @@ use std::sync::mpsc::Sender;
 use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::mpsc::channel;
+use std::sync::mpsc;
 use std::thread;
 
 use std::time::Duration;
@@ -78,34 +79,55 @@ fn client_to_upstream(
     }
 }
 
-pub fn create_sender(
-    local_send_queue: Sender<(SocketAddr, Vec<u8>)>,
-    remote_addr_copy: String,
+pub struct Forwarder {
+    send_queue: Sender<(SocketAddr, Vec<u8>)>,
+    remote_addr: String,
     src_addr: SocketAddr,
-)-> Sender<Vec<u8>> {
-    let (sender, receiver) = channel::<Vec<u8>>();
-    thread::spawn(move|| {
-        //regardless of which port we are listening to, we don't know which interface or IP
-        //address the remote server is reachable via, so we bind the outgoing
-        //connection to 0.0.0.0 in all cases.
-        let temp_outgoing_addr = format!("0.0.0.0:{}", 1024 + rand::random::<u16>());
-        let upstream_send = UdpSocket::bind(&temp_outgoing_addr)
-            .expect(&format!("Failed to bind to transient address {}", &temp_outgoing_addr));
-        let upstream_recv = upstream_send.try_clone()
-            .expect("Failed to clone client-specific connection to upstream!");
-
-        let mut timeouts : u64 = 0;
-        let timed_out = Arc::new(AtomicBool::new(false));
-
-        let local_timed_out = timed_out.clone();
-        upstream_to_local(upstream_recv,
-                          local_send_queue,
-                          src_addr,
-                          local_timed_out,
-        );
-
-        client_to_upstream(receiver, upstream_send, & mut timeouts, remote_addr_copy, src_addr, timed_out);
-
-    });
-    sender
+    sender: Sender<Vec<u8>>,
 }
+
+impl Forwarder {
+    pub fn new(
+        local_send_queue: Sender<(SocketAddr, Vec<u8>)>,
+        remote_addr_copy: String,
+        src_addr: SocketAddr,
+    ) -> Forwarder {
+        let send_q = local_send_queue.clone();
+        let remote_a = remote_addr_copy.clone();
+        let (sender, receiver) = channel::<Vec<u8>>();
+        thread::spawn(move|| {
+            //regardless of which port we are listening to, we don't know which interface or IP
+            //address the remote server is reachable via, so we bind the outgoing
+            //connection to 0.0.0.0 in all cases.
+            let temp_outgoing_addr = format!("0.0.0.0:{}", 1024 + rand::random::<u16>());
+            let upstream_send = UdpSocket::bind(&temp_outgoing_addr)
+                .expect(&format!("Failed to bind to transient address {}", &temp_outgoing_addr));
+            let upstream_recv = upstream_send.try_clone()
+                .expect("Failed to clone client-specific connection to upstream!");
+
+            let mut timeouts : u64 = 0;
+            let timed_out = Arc::new(AtomicBool::new(false));
+
+            let local_timed_out = timed_out.clone();
+            upstream_to_local(upstream_recv,
+                              send_q,
+                              src_addr,
+                              local_timed_out,
+            );
+
+            client_to_upstream(receiver, upstream_send, & mut timeouts, remote_a, src_addr, timed_out);
+
+        });
+        Forwarder {
+            send_queue: local_send_queue,
+            remote_addr: remote_addr_copy,
+            src_addr: src_addr,
+            sender: sender
+        }
+    }
+
+    pub fn send(&self, data: Vec<u8>)-> Result<(), mpsc::SendError<Vec<u8>>> {
+        self.sender.send(data)
+    }
+}
+

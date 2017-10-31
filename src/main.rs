@@ -9,7 +9,7 @@ use std::net::UdpSocket;
 use std::sync::mpsc::channel;
 
 use socks5udp::reply_to_client;
-use socks5udp::create_sender;
+use socks5udp::Forwarder;
 
 static mut DEBUG: bool = false;
 
@@ -91,10 +91,12 @@ fn forward(bind_addr: &str, local_port: i32, remote_host: &str, remote_port: i32
 
     let mut client_map = HashMap::new();
     let mut buf = [0; 64 * 1024];
+    // loop to receive a new packet
     loop {
         let (num_bytes, src_addr) = local.recv_from(&mut buf).expect("Didn't receive data");
 
         //we create a new thread for each unique client
+        // loop and send the packet
         let mut remove_existing = false;
         loop {
             debug(format!("Received packet from client {}", src_addr));
@@ -111,7 +113,7 @@ fn forward(bind_addr: &str, local_port: i32, remote_host: &str, remote_port: i32
                 .or_insert_with(|| {
                     //we are creating a new listener now, so a failure to send shoud be treated as an error
                     ignore_failure = false;
-                    create_sender(
+                    Forwarder::new(
                         main_sender.clone(),
                         remote_addr.clone(),
                         src_addr,
