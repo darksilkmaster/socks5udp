@@ -48,3 +48,29 @@ pub fn upstream_to_local(
         }
     });
 }
+
+pub fn client_to_upstream(
+    receiver: Receiver<Vec<u8>>,
+    upstream_send: UdpSocket,
+    timeouts: &mut u64,
+    remote_addr_copy: String,
+    src_addr: SocketAddr,
+    timed_out: Arc<AtomicBool>,
+) {
+    loop {
+        match receiver.recv_timeout(Duration::from_millis(TIMEOUT)) {
+            Ok(from_client) => {
+                upstream_send.send_to(from_client.as_slice(), &remote_addr_copy)
+                    .expect(&format!("Failed to forward packet from client {} to upstream server!", src_addr));
+                *timeouts = 0; //reset timeout count
+            },
+            Err(_) => {
+                *timeouts += 1;
+                if *timeouts >= 10 {
+                    timed_out.store(true, Ordering::Relaxed);
+                    break;
+                }
+            }
+        };
+    }
+}

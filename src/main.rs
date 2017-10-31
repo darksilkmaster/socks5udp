@@ -1,21 +1,20 @@
 extern crate getopts;
 extern crate rand;
-extern crate udpproxy;
+extern crate socks5udp;
 
 use getopts::Options;
 use std::collections::HashMap;
 use std::env;
 use std::net::UdpSocket;
 use std::sync::Arc;
-use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::atomic::{AtomicBool};
 use std::sync::mpsc::channel;
 use std::thread;
-use std::time::Duration;
 
-use udpproxy::reply_to_client;
-use udpproxy::upstream_to_local;
+use socks5udp::reply_to_client;
+use socks5udp::upstream_to_local;
+use socks5udp::client_to_upstream;
 
-const TIMEOUT: u64 = 3 * 60 * 100; //3 minutes
 static mut DEBUG: bool = false;
 
 fn print_usage(program: &str, opts: Options) {
@@ -140,23 +139,8 @@ fn forward(bind_addr: &str, local_port: i32, remote_host: &str, remote_port: i32
                                       local_timed_out,
                     );
 
-                    loop {
-                        match receiver.recv_timeout(Duration::from_millis(TIMEOUT)) {
-                            Ok(from_client) =>  {
-                                upstream_send.send_to(from_client.as_slice(), &remote_addr_copy)
-                                    .expect(&format!("Failed to forward packet from client {} to upstream server!", src_addr));
-                                timeouts = 0; //reset timeout count
-                            },
-                            Err(_) => {
-                                timeouts += 1;
-                                if timeouts >= 10 {
-                                    debug(format!("Disconnecting forwarder for client {} due to timeout", src_addr));
-                                    timed_out.store(true, Ordering::Relaxed);
-                                    break;
-                                }
-                            }
-                        };
-                    }
+                    client_to_upstream(receiver, upstream_send, & mut timeouts, remote_addr_copy, src_addr, timed_out);
+
                 });
                 sender
             });
