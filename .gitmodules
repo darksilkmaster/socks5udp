@@ -1,3 +1,3 @@
 [submodule "rust-socks"]
 	path = rust-socks
-	url = git@github.com:darksilkmaster/rust-socks.git
+	url = https://github.com/darksilkmaster/rust-socks.git
